@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neural Network Playground</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #5b6475; --border: #d8dce4;
+    --accent: #2f5fd0; --accent-text: #ffffff; --good: #1b7f4a; --bad: #b3261e; --grid: #e6e9ef;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12151c; --panel: #1b2029; --text: #e7eaf0; --muted: #9aa3b5; --border: #2e3644;
+      --accent: #6f95f5; --accent-text: #0e1320; --good: #55c58a; --bad: #f2877f; --grid: #2a303c;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12151c; --panel: #1b2029; --text: #e7eaf0; --muted: #9aa3b5; --border: #2e3644;
+    --accent: #6f95f5; --accent-text: #0e1320; --good: #55c58a; --bad: #f2877f; --grid: #2a303c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; }
+  p.lead { color: var(--muted); margin: 0 0 20px; max-width: 70ch; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px 20px; }
+  label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 4px; }
+  label output { color: var(--text); font-weight: 600; margin-left: 6px; }
+  select, input[type=number] { width: 100%; padding: 7px 8px; font: inherit; color: var(--text);
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .buttons { display: flex; flex-wrap: wrap; gap: 10px; margin: 16px 0; }
+  button { font: inherit; padding: 9px 16px; border-radius: 8px; border: 1px solid var(--border);
+           background: var(--panel); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 10px 28px; margin: 0 0 16px; }
+  .stat span { display: block; font-size: .8rem; color: var(--muted); }
+  .stat strong { font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  canvas { width: 100%; height: auto; display: block; border-radius: 8px; background: var(--bg); }
+  figcaption { font-size: .85rem; color: var(--muted); margin-top: 6px; }
+  figure { margin: 0; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; margin-top: 16px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); font-size: .95rem; }
+  th { color: var(--muted); font-weight: 600; }
+  td.ok { color: var(--good); font-weight: 600; } td.wrong { color: var(--bad); font-weight: 600; }
+  .note { color: var(--muted); font-size: .9rem; margin-top: 18px; max-width: 75ch; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Neural Network Playground</h1>
+  <p class="lead">A tiny network (2 inputs → hidden layer → 1 output) learns a logic gate right here in your
+  browser. Pick a gate, press <strong>Train</strong>, and watch the loss fall and the decision boundary form.
+  This page re-implements the same maths as the Python project, independently, in JavaScript.</p>
+
+  <section class="panel" aria-label="Settings">
+    <div class="controls">
+      <div><label for="gate">Logic gate</label>
+        <select id="gate"><option>XOR</option><option>AND</option><option>OR</option><option>NAND</option></select></div>
+      <div><label for="activation">Hidden activation</label>
+        <select id="activation"><option>sigmoid</option><option>tanh</option><option>relu</option></select></div>
+      <div><label for="hidden">Hidden neurons<output id="hiddenOut">4</output></label>
+        <input id="hidden" type="range" min="1" max="12" value="4"></div>
+      <div><label for="lr">Learning rate<output id="lrOut">0.50</output></label>
+        <input id="lr" type="range" min="-2" max="0.7" step="0.05" value="-0.3"></div>
+      <div><label for="speed">Speed (epochs per frame)<output id="speedOut">20</output></label>
+        <input id="speed" type="range" min="1" max="200" value="20"></div>
+      <div><label for="seed">Random seed</label>
+        <input id="seed" type="number" value="42" min="0" step="1"></div>
+    </div>
+    <div class="buttons">
+      <button id="train" class="primary" type="button">Train</button>
+      <button id="step" type="button">Step 1 epoch</button>
+      <button id="reset" type="button">Reset weights</button>
+    </div>
+    <div class="stats" role="status" aria-live="polite">
+      <div class="stat"><span>Epoch</span><strong id="epoch">0</strong></div>
+      <div class="stat"><span>Loss</span><strong id="loss">–</strong></div>
+      <div class="stat"><span>Accuracy</span><strong id="acc">–</strong></div>
+    </div>
+    <div class="charts">
+      <figure><canvas id="boundary" width="420" height="420" role="img"
+        aria-label="Decision boundary: colours show the predicted probability for every input"></canvas>
+        <figcaption>Decision boundary. Red = predicted 1, blue = predicted 0. Circles should be 0, squares 1.</figcaption></figure>
+      <figure><canvas id="lossChart" width="420" height="420" role="img"
+        aria-label="Training loss against epochs"></canvas>
+        <figcaption>Training loss (log scale). It should fall; a long flat stretch is the hidden layer still searching.</figcaption></figure>
+    </div>
+    <table aria-label="Predictions">
+      <thead><tr><th>Input</th><th>Expected</th><th>Probability</th><th>Predicted</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+  <p class="note">Try: XOR with 1 hidden neuron (it cannot learn it), ReLU with 2 hidden neurons (it often
+  gets stuck; in a test only 3 of 10 seeds solved XOR, so change the seed), or a learning rate near the maximum (the loss may become unstable).</p>
+</main>
+
+<script>
+"use strict";
+const GATES = { XOR: [0, 1, 1, 0], AND: [0, 0, 0, 1], OR: [0, 1, 1, 1], NAND: [1, 1, 1, 0] };
+const INPUTS = [[0, 0], [0, 1], [1, 0], [1, 1]];
+const $ = (id) => document.getElementById(id);
+
+// ---- small seeded random number generator (so a seed gives a repeatable run)
+function mulberry32(seed) {
+  let a = seed >>> 0;
+  return function () {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function randn(rng) {                       // Box-Muller: a normally distributed number
+  let u = 0; while (u === 0) u = rng();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rng());
+}
+
+// ---- activations; every derivative takes the activation OUTPUT a (not z)
+const sigmoid = (z) => 1 / (1 + Math.exp(-Math.max(-500, Math.min(500, z))));
+const ACT = {
+  sigmoid: { f: sigmoid, d: (a) => a * (1 - a) },
+  tanh: { f: Math.tanh, d: (a) => 1 - a * a },
+  relu: { f: (z) => Math.max(0, z), d: (a) => (a > 0 ? 1 : 0) },
+};
+
+let net = null, losses = [], epoch = 0, running = false, frame = null;
+
+function newNetwork() {
+  const H = +$("hidden").value, act = $("activation").value, rng = mulberry32(+$("seed").value);
+  const std1 = act === "relu" ? Math.sqrt(2 / 2) : 1;     // He init for ReLU, else standard normal
+  net = {
+    H, act,
+    W1: [0, 1].map(() => Array.from({ length: H }, () => randn(rng) * std1)),
+    b1: new Array(H).fill(0),
+    W2: Array.from({ length: H }, () => randn(rng)),
+    b2: 0,
+  };
+  losses = []; epoch = 0;
+}
+
+function forward(x0, x1) {
+  const { H, act, W1, b1, W2, b2 } = net, f = ACT[act].f, a1 = new Array(H);
+  let z2 = b2;
+  for (let j = 0; j < H; j++) { a1[j] = f(x0 * W1[0][j] + x1 * W1[1][j] + b1[j]); z2 += a1[j] * W2[j]; }
+  return { a1, p: sigmoid(z2) };
+}
+
+const clip = (p) => Math.min(1 - 1e-12, Math.max(1e-12, p));
+function currentLoss(y) {
+  let total = 0;
+  INPUTS.forEach(([x0, x1], i) => { const p = clip(forward(x0, x1).p); total -= y[i] * Math.log(p) + (1 - y[i]) * Math.log(1 - p); });
+  return total / INPUTS.length;
+}
+
+// ---- one epoch of full-batch gradient descent with backpropagation
+function trainEpoch(y, lr) {
+  const { H, act, W1, b1, W2 } = net, d = ACT[act].d, m = INPUTS.length;
+  const gW1 = [new Array(H).fill(0), new Array(H).fill(0)], gb1 = new Array(H).fill(0);
+  const gW2 = new Array(H).fill(0); let gb2 = 0;
+  INPUTS.forEach(([x0, x1], i) => {
+    const { a1, p } = forward(x0, x1);
+    const dz2 = p - y[i];                                  // prediction minus truth
+    gb2 += dz2;
+    for (let j = 0; j < H; j++) {
+      gW2[j] += a1[j] * dz2;
+      const dz1 = dz2 * W2[j] * d(a1[j]);                  // error sent back through W2
+      gW1[0][j] += x0 * dz1; gW1[1][j] += x1 * dz1; gb1[j] += dz1;
+    }
+  });
+  for (let j = 0; j < H; j++) {
+    W1[0][j] -= lr * gW1[0][j] / m; W1[1][j] -= lr * gW1[1][j] / m;
+    b1[j] -= lr * gb1[j] / m; W2[j] -= lr * gW2[j] / m;
+  }
+  net.b2 -= lr * gb2 / m;
+}
+
+const learningRate = () => Math.pow(10, +$("lr").value);
+
+// ---- drawing
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+function colour(p) {                                        // blue -> light grey -> red
+  const lo = [59, 76, 192], mid = [221, 221, 221], hi = [180, 4, 38];
+  const [a, b, t] = p < 0.5 ? [lo, mid, p * 2] : [mid, hi, (p - 0.5) * 2];
+  return a.map((v, i) => Math.round(v + (b[i] - v) * t));
+}
+function drawBoundary(y) {
+  const cv = $("boundary"), ctx = cv.getContext("2d"), N = 70, lo = -0.5, hi = 1.5;
+  const small = document.createElement("canvas"); small.width = small.height = N;
+  const sctx = small.getContext("2d"), img = sctx.createImageData(N, N);
+  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    const x0 = lo + (hi - lo) * c / (N - 1), x1 = hi - (hi - lo) * r / (N - 1);
+    const [R, G, B] = colour(forward(x0, x1).p), k = 4 * (r * N + c);
+    img.data[k] = R; img.data[k + 1] = G; img.data[k + 2] = B; img.data[k + 3] = 255;
+  }
+  sctx.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = true; ctx.drawImage(small, 0, 0, cv.width, cv.height);
+  const px = (v) => (v - lo) / (hi - lo) * cv.width, py = (v) => (hi - v) / (hi - lo) * cv.height;
+  ctx.lineWidth = 3; ctx.strokeStyle = "#000"; ctx.fillStyle = "#fff";
+  INPUTS.forEach(([x0, x1], i) => {
+    const x = px(x0), yy = py(x1);
+    ctx.beginPath();
+    if (y[i] === 0) ctx.arc(x, yy, 11, 0, 2 * Math.PI); else ctx.rect(x - 11, yy - 11, 22, 22);
+    ctx.fill(); ctx.stroke();
+  });
+  ctx.fillStyle = "#000"; ctx.font = "13px system-ui, sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("Input 1 →", cv.width / 2, cv.height - 6);
+}
+function drawLoss() {
+  const cv = $("lossChart"), ctx = cv.getContext("2d"), W = cv.width, H = cv.height, L = 52, B = 36, T = 14, R = 12;
+  ctx.clearRect(0, 0, W, H); ctx.fillStyle = css("--bg"); ctx.fillRect(0, 0, W, H);
+  const text = css("--muted"), grid = css("--grid");
+  ctx.font = "12px system-ui, sans-serif"; ctx.fillStyle = text; ctx.strokeStyle = grid; ctx.lineWidth = 1;
+  const lo = Math.log10(1e-4), hi = Math.log10(1);
+  const yAt = (v) => T + (hi - Math.log10(Math.max(1e-4, Math.min(1, v)))) / (hi - lo) * (H - T - B);
+  for (let e = -4; e <= 0; e++) {
+    const yy = yAt(Math.pow(10, e)); ctx.beginPath(); ctx.moveTo(L, yy); ctx.lineTo(W - R, yy); ctx.stroke();
+    ctx.textAlign = "right"; ctx.fillText(Math.pow(10, e).toString(), L - 6, yy + 4);
+  }
+  ctx.textAlign = "center"; ctx.fillText("Epoch", (L + W - R) / 2, H - 8);
+  if (losses.length < 2) return;
+  const xAt = (i) => L + i / Math.max(1, losses.length - 1) * (W - L - R);
+  ctx.strokeStyle = css("--accent"); ctx.lineWidth = 2.5; ctx.beginPath();
+  const stride = Math.max(1, Math.floor(losses.length / 600));
+  for (let i = 0; i < losses.length; i += stride) { const x = xAt(i), yy = yAt(losses[i]); i ? ctx.lineTo(x, yy) : ctx.moveTo(x, yy); }
+  ctx.lineTo(xAt(losses.length - 1), yAt(losses[losses.length - 1])); ctx.stroke();
+  ctx.fillStyle = text; ctx.textAlign = "left"; ctx.fillText("1", L, H - B + 14);
+  ctx.textAlign = "right"; ctx.fillText(String(losses.length), W - R, H - B + 14);
+}
+function refresh() {
+  const y = GATES[$("gate").value];
+  const loss = currentLoss(y);
+  let right = 0; const rows = [];
+  INPUTS.forEach(([x0, x1], i) => {
+    const p = forward(x0, x1).p, pred = p >= 0.5 ? 1 : 0, ok = pred === y[i]; right += ok;
+    rows.push(`<tr><td>[${x0}, ${x1}]</td><td>${y[i]}</td><td>${p.toFixed(4)}</td><td class="${ok ? "ok" : "wrong"}">${pred} ${ok ? "✓" : "✗"}</td></tr>`);
+  });
+  $("rows").innerHTML = rows.join("");
+  $("epoch").textContent = epoch;
+  $("loss").textContent = loss.toFixed(4);
+  $("acc").textContent = (100 * right / INPUTS.length).toFixed(0) + "%";
+  drawBoundary(y); drawLoss();
+}
+
+// ---- wiring
+function tick() {
+  const y = GATES[$("gate").value], lr = learningRate();
+  for (let i = 0, n = +$("speed").value; i < n; i++) {
+    losses.push(currentLoss(y)); trainEpoch(y, lr); epoch++;
+    if (!isFinite(losses[losses.length - 1])) break;
+  }
+  refresh();
+  frame = running ? requestAnimationFrame(tick) : null;
+}
+function setRunning(on) {
+  running = on; $("train").textContent = on ? "Pause" : "Train";
+  if (on && frame === null) frame = requestAnimationFrame(tick);
+}
+function reset() { setRunning(false); newNetwork(); refresh(); }
+
+$("train").addEventListener("click", () => setRunning(!running));
+$("step").addEventListener("click", () => {
+  setRunning(false); const y = GATES[$("gate").value];
+  losses.push(currentLoss(y)); trainEpoch(y, learningRate()); epoch++; refresh();
+});
+$("reset").addEventListener("click", reset);
+["gate", "activation", "hidden", "seed"].forEach((id) => $(id).addEventListener("change", reset));
+$("hidden").addEventListener("input", () => { $("hiddenOut").textContent = $("hidden").value; });
+$("lr").addEventListener("input", () => { $("lrOut").textContent = learningRate().toFixed(2); });
+$("speed").addEventListener("input", () => { $("speedOut").textContent = $("speed").value; });
+window.addEventListener("beforeunload", () => { if (frame !== null) cancelAnimationFrame(frame); });
+newNetwork(); refresh();
+</script>
+</body>
+</html>
